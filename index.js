@@ -1,7 +1,7 @@
 require('dotenv').config();
 const { Client, GatewayIntentBits } = require('discord.js');
 const { Client: NotionClient } = require('@notionhq/client');
- 
+
 // ─────────────────────────────────────────────
 // CONFIG — edit these to match your Discord setup
 // ─────────────────────────────────────────────
@@ -9,19 +9,19 @@ const CONFIG = {
   // The Discord category name that contains all your client channels
   // e.g. "BOOST CLIENTS" — must match exactly (case-insensitive check done below)
   CLIENT_CATEGORY_NAME: 'CLIENTS (Boost-2)',
- 
+
   // Discord role names
   CLIENT_ROLE: 'Boost Member',  // Role assigned to every client
   TEAM_ROLE: 'Admin',           // Role assigned to every team member
- 
+
   // Active hours (IST = UTC+5:30)
   // Bot only starts a timer if client messages lands within these hours
   ACTIVE_HOURS_START: 9,    // 9am IST
   ACTIVE_HOURS_END: 22,     // 10pm IST
- 
+
   // Notion database ID — already created for you
   NOTION_DATABASE_ID: '9cc417ffbad94afabf2f4e40b78b46ef',
- 
+
   // Scoring rules
   SCORE: {
     UNDER_30: 2,    // +2 points for reply under 30 min
@@ -29,7 +29,7 @@ const CONFIG = {
     OVER_45: -1,    // -1 point for reply over 45 min
   }
 };
- 
+
 // ─────────────────────────────────────────────
 // CLIENTS
 // ─────────────────────────────────────────────
@@ -41,19 +41,19 @@ const discord = new Client({
     GatewayIntentBits.GuildMembers,
   ]
 });
- 
+
 const notion = new NotionClient({ auth: process.env.NOTION_TOKEN });
- 
+
 // ─────────────────────────────────────────────
 // STATE — tracks pending client messages waiting for a reply
 // Key: channelId, Value: { clientName, messageTime, messageId }
 // ─────────────────────────────────────────────
 const pendingReplies = new Map();
- 
+
 // ─────────────────────────────────────────────
 // HELPERS
 // ─────────────────────────────────────────────
- 
+
 function isActiveHour() {
   const now = new Date();
   // Convert UTC to IST (UTC+5:30)
@@ -61,12 +61,12 @@ function isActiveHour() {
   const hour = ist.getUTCHours();
   return hour >= CONFIG.ACTIVE_HOURS_START && hour < CONFIG.ACTIVE_HOURS_END;
 }
- 
+
 function formatTime(date) {
   const ist = new Date(date.getTime() + (5.5 * 60 * 60 * 1000));
   return ist.toISOString().replace('T', ' ').slice(0, 16) + ' IST';
 }
- 
+
 function getResponseStats(responseMinutes) {
   if (responseMinutes < 30) {
     return { sla: '✅ Under 30 min', points: CONFIG.SCORE.UNDER_30 };
@@ -76,22 +76,22 @@ function getResponseStats(responseMinutes) {
     return { sla: '🔴 Over 45 min', points: CONFIG.SCORE.OVER_45 };
   }
 }
- 
+
 function isClientChannel(channel) {
   if (!channel.parent) return false;
   return channel.parent.name.toUpperCase() === CONFIG.CLIENT_CATEGORY_NAME.toUpperCase();
 }
- 
+
 async function isTeamMember(member) {
   if (!member) return false;
   return member.roles.cache.some(r => r.name === CONFIG.TEAM_ROLE);
 }
- 
+
 async function isClient(member) {
   if (!member) return false;
   return member.roles.cache.some(r => r.name === CONFIG.CLIENT_ROLE);
 }
- 
+
 function getTeamMemberName(member) {
   // Try nickname first, then username
   // Map Discord usernames to Meteoric team names if needed
@@ -103,11 +103,11 @@ function getTeamMemberName(member) {
   const username = member.user.username;
   return NAME_MAP[username] || member.nickname || member.user.displayName || username;
 }
- 
+
 // ─────────────────────────────────────────────
 // LOG TO NOTION
 // ─────────────────────────────────────────────
- 
+
 async function logToNotion({ clientName, date, clientMessageTime, firstReplyTime, responseMinutes, repliedBy, slaStatus, points, activeHours }) {
   try {
     await notion.pages.create({
@@ -129,15 +129,15 @@ async function logToNotion({ clientName, date, clientMessageTime, firstReplyTime
     console.error('❌ Notion log failed:', err.message);
   }
 }
- 
+
 // ─────────────────────────────────────────────
 // DAILY SCORECARD
 // ─────────────────────────────────────────────
- 
+
 // In-memory log of today's responses
 // { repliedBy: { responses: N, totalMins: N, points: N, breaches: N, fastest: {mins, client} } }
 const todayStats = {};
- 
+
 function recordStat({ repliedBy, responseMinutes, points, clientName }) {
   if (!todayStats[repliedBy]) {
     todayStats[repliedBy] = { responses: 0, totalMins: 0, points: 0, breaches: 0, fastest: null };
@@ -151,7 +151,7 @@ function recordStat({ repliedBy, responseMinutes, points, clientName }) {
     s.fastest = { mins: responseMinutes, client: clientName };
   }
 }
- 
+
 async function postDailyScorecard() {
   // Find the Turnaround Performance channel
   let targetChannel = null;
@@ -165,38 +165,38 @@ async function postDailyScorecard() {
       }
     });
   });
- 
+
   if (!targetChannel) {
     console.log('❌ Turnaround Performance channel not found');
     return;
   }
- 
+
   const today = new Date();
   const ist = new Date(today.getTime() + (5.5 * 60 * 60 * 1000));
   const dateStr = ist.toISOString().split('T')[0];
- 
+
   // Sort by points descending
   const ranked = Object.entries(todayStats).sort((a, b) => b[1].points - a[1].points);
- 
+
   if (ranked.length === 0) {
     await targetChannel.send(`🎱 **Daily Response Scorecard — ${dateStr}**\n\nNo client responses tracked today.`);
     return;
   }
- 
+
   const medals = ['🥇', '🥈', '🥉'];
   let msg = `🎱 **Daily Response Scorecard — ${dateStr}**\n\n`;
- 
+
   ranked.forEach(([name, s], i) => {
     const avg = Math.round(s.totalMins / s.responses);
     const medal = medals[i] || `${i + 1}.`;
     const slaEmoji = avg < 30 ? '✅' : avg <= 45 ? '⚠️' : '🔴';
     msg += `${medal} **${name}** — ${s.responses} responses | Avg ${avg} min | **${s.points > 0 ? '+' : ''}${s.points} pts** ${slaEmoji}\n`;
   });
- 
+
   // Total breaches
   const totalBreaches = ranked.reduce((acc, [, s]) => acc + s.breaches, 0);
   msg += `\n🔴 **Breaches today:** ${totalBreaches}\n`;
- 
+
   // Fastest reply overall
   let fastest = null;
   ranked.forEach(([name, s]) => {
@@ -207,14 +207,14 @@ async function postDailyScorecard() {
   if (fastest) {
     msg += `⚡ **Fastest reply:** ${fastest.name} — ${fastest.mins} min (${fastest.client})`;
   }
- 
+
   await targetChannel.send(msg);
   console.log('📊 Daily scorecard posted');
- 
+
   // Reset stats for the new day
   Object.keys(todayStats).forEach(k => delete todayStats[k]);
 }
- 
+
 function scheduleScorecard() {
   function msUntil10pmIST() {
     const now = new Date();
@@ -224,7 +224,7 @@ function scheduleScorecard() {
     if (target <= ist) target.setUTCDate(target.getUTCDate() + 1);
     return target - ist;
   }
- 
+
   function loop() {
     const delay = msUntil10pmIST();
     console.log(`⏰ Next scorecard in ${Math.round(delay / 60000)} minutes`);
@@ -233,48 +233,48 @@ function scheduleScorecard() {
       loop();
     }, delay);
   }
- 
+
   loop();
 }
- 
+
 // ─────────────────────────────────────────────
 // BOT EVENTS
 // ─────────────────────────────────────────────
- 
+
 discord.once('ready', () => {
   console.log(`🚀 Meteoric Response Tracker is online as ${discord.user.tag}`);
   scheduleScorecard();
 });
- 
+
 discord.on('messageCreate', async (message) => {
   console.log(`📨 Message from: ${message.author.username} in #${message.channel.name} | Category: ${message.channel.parent?.name || 'none'}`);
- 
+
   // Ignore bots
   if (message.author.bot) return;
- 
+
   // Manual scorecard trigger
   if (message.content === '!scorecard') {
     await postDailyScorecard();
     return;
   }
- 
+
   // Only watch client channels
   if (!isClientChannel(message.channel)) {
     console.log(`⏭ Skipping - not a client channel`);
     return;
   }
- 
+
   const channelId = message.channel.id;
- 
+
   // Fetch member to check roles
   const member = message.guild?.members.cache.get(message.author.id)
     || await message.guild?.members.fetch(message.author.id).catch(() => null);
- 
+
   if (!member) return;
- 
+
   const isTeam = await isTeamMember(member);
   const isClientMsg = await isClient(member);
- 
+
   // ── CLIENT SENT A MESSAGE ──
   if (isClientMsg) {
     // Only start a timer if within active hours
@@ -282,7 +282,7 @@ discord.on('messageCreate', async (message) => {
       console.log(`⏰ Message from ${message.channel.name} outside active hours — skipping timer`);
       return;
     }
- 
+
     // If there's already a pending reply for this channel, don't overwrite
     // (we track first unanswered message per channel)
     if (!pendingReplies.has(channelId)) {
@@ -290,30 +290,30 @@ discord.on('messageCreate', async (message) => {
         .replace('1-on-1-', '')
         .replace(/-/g, ' ')
         .replace(/\b\w/g, c => c.toUpperCase()); // e.g. "1-on-1-dev-shah" → "Dev Shah"
- 
+
       pendingReplies.set(channelId, {
         clientName,
         messageTime: message.createdAt,
         messageId: message.id,
       });
- 
+
       console.log(`⏳ Timer started: ${clientName} at ${formatTime(message.createdAt)}`);
     }
     return;
   }
- 
+
   // ── TEAM MEMBER REPLIED ──
   if (isTeam && pendingReplies.has(channelId)) {
     const pending = pendingReplies.get(channelId);
     const replyTime = message.createdAt;
     const diffMs = replyTime - pending.messageTime;
     const diffMins = Math.round(diffMs / 60000);
- 
+
     const { sla, points } = getResponseStats(diffMins);
     const repliedBy = getTeamMemberName(member);
- 
+
     const dateStr = replyTime.toISOString().split('T')[0]; // YYYY-MM-DD
- 
+
     await logToNotion({
       clientName: pending.clientName,
       date: dateStr,
@@ -325,14 +325,14 @@ discord.on('messageCreate', async (message) => {
       points,
       activeHours: true,
     });
- 
+
     recordStat({ repliedBy, responseMinutes: diffMins, points, clientName: pending.clientName });
- 
+
     // Clear the pending timer for this channel
     pendingReplies.delete(channelId);
   }
 });
- 
+
 // ─────────────────────────────────────────────
 // START
 // ─────────────────────────────────────────────
