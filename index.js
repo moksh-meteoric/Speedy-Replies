@@ -131,11 +131,119 @@ async function logToNotion({ clientName, date, clientMessageTime, firstReplyTime
 }
 
 // ─────────────────────────────────────────────
+// DAILY SCORECARD
+// ─────────────────────────────────────────────
+
+// In-memory log of today's responses
+// { repliedBy: { responses: N, totalMins: N, points: N, breaches: N, fastest: {mins, client} } }
+const todayStats = {};
+
+function recordStat({ repliedBy, responseMinutes, points, clientName }) {
+  if (!todayStats[repliedBy]) {
+    todayStats[repliedBy] = { responses: 0, totalMins: 0, points: 0, breaches: 0, fastest: null };
+  }
+  const s = todayStats[repliedBy];
+  s.responses++;
+  s.totalMins += responseMinutes;
+  s.points += points;
+  if (points < 0) s.breaches++;
+  if (!s.fastest || responseMinutes < s.fastest.mins) {
+    s.fastest = { mins: responseMinutes, client: clientName };
+  }
+}
+
+async function postDailyScorecard() {
+  // Find the Turnaround Performance channel
+  let targetChannel = null;
+  discord.guilds.cache.forEach(guild => {
+    guild.channels.cache.forEach(ch => {
+      if (
+        ch.name.toLowerCase().includes('turnaround') &&
+        ch.parent?.name.toUpperCase() === 'TEAM METEORIC'
+      ) {
+        targetChannel = ch;
+      }
+    });
+  });
+
+  if (!targetChannel) {
+    console.log('❌ Turnaround Performance channel not found');
+    return;
+  }
+
+  const today = new Date();
+  const ist = new Date(today.getTime() + (5.5 * 60 * 60 * 1000));
+  const dateStr = ist.toISOString().split('T')[0];
+
+  // Sort by points descending
+  const ranked = Object.entries(todayStats).sort((a, b) => b[1].points - a[1].points);
+
+  if (ranked.length === 0) {
+    await targetChannel.send(`🎱 **Daily Response Scorecard — ${dateStr}**\n\nNo client responses tracked today.`);
+    return;
+  }
+
+  const medals = ['🥇', '🥈', '🥉'];
+  let msg = `🎱 **Daily Response Scorecard — ${dateStr}**\n\n`;
+
+  ranked.forEach(([name, s], i) => {
+    const avg = Math.round(s.totalMins / s.responses);
+    const medal = medals[i] || `${i + 1}.`;
+    const slaEmoji = avg < 30 ? '✅' : avg <= 45 ? '⚠️' : '🔴';
+    msg += `${medal} **${name}** — ${s.responses} responses | Avg ${avg} min | **${s.points > 0 ? '+' : ''}${s.points} pts** ${slaEmoji}\n`;
+  });
+
+  // Total breaches
+  const totalBreaches = ranked.reduce((acc, [, s]) => acc + s.breaches, 0);
+  msg += `\n🔴 **Breaches today:** ${totalBreaches}\n`;
+
+  // Fastest reply overall
+  let fastest = null;
+  ranked.forEach(([name, s]) => {
+    if (s.fastest && (!fastest || s.fastest.mins < fastest.mins)) {
+      fastest = { name, ...s.fastest };
+    }
+  });
+  if (fastest) {
+    msg += `⚡ **Fastest reply:** ${fastest.name} — ${fastest.mins} min (${fastest.client})`;
+  }
+
+  await targetChannel.send(msg);
+  console.log('📊 Daily scorecard posted');
+
+  // Reset stats for the new day
+  Object.keys(todayStats).forEach(k => delete todayStats[k]);
+}
+
+function scheduleScorecard() {
+  function msUntil10pmIST() {
+    const now = new Date();
+    const ist = new Date(now.getTime() + (5.5 * 60 * 60 * 1000));
+    const target = new Date(ist);
+    target.setUTCHours(16, 30, 0, 0); // 10pm IST = 16:30 UTC
+    if (target <= ist) target.setUTCDate(target.getUTCDate() + 1);
+    return target - ist;
+  }
+
+  function loop() {
+    const delay = msUntil10pmIST();
+    console.log(`⏰ Next scorecard in ${Math.round(delay / 60000)} minutes`);
+    setTimeout(async () => {
+      await postDailyScorecard();
+      loop();
+    }, delay);
+  }
+
+  loop();
+}
+
+// ─────────────────────────────────────────────
 // BOT EVENTS
 // ─────────────────────────────────────────────
 
 discord.once('ready', () => {
   console.log(`🚀 Meteoric Response Tracker is online as ${discord.user.tag}`);
+  scheduleScorecard();
 });
 
 discord.on('messageCreate', async (message) => {
@@ -211,6 +319,8 @@ discord.on('messageCreate', async (message) => {
       points,
       activeHours: true,
     });
+
+    recordStat({ repliedBy, responseMinutes: diffMins, points, clientName: pending.clientName });
 
     // Clear the pending timer for this channel
     pendingReplies.delete(channelId);
