@@ -253,11 +253,11 @@ discord.on('messageCreate', async (message) => {
   // Ignore bots
   if (message.author.bot) return;
 
-  // Manual scorecard trigger
-  if (message.content.trim().toLowerCase() === '!scorecard') {
-    await postDailyScorecard();
-    return;
-  }
+// Manual scorecard trigger
+if (message.content.includes('scorecard')) {
+  await postDailyScorecard();
+  return;
+}
 
   // Only watch client channels
   if (!isClientChannel(message.channel)) {
