@@ -253,7 +253,7 @@ discord.on('messageCreate', async (message) => {
   if (message.author.bot) return;
 
   // Manual scorecard trigger — type !scorecard in any channel
-  if (message.content.toLowerCase().includes('scorecard')) {
+  if (message.content.toLowerCase().includes('scorecard')){
     console.log(`🎱 Scorecard triggered by ${message.author.username}`);
     await postDailyScorecard();
     return;
