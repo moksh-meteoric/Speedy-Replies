@@ -1,3 +1,4 @@
+
 require('dotenv').config();
 const { Client, GatewayIntentBits } = require('discord.js');
 const { Client: NotionClient } = require('@notionhq/client');
