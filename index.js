@@ -1,4 +1,3 @@
-
 require('dotenv').config();
 const { Client, GatewayIntentBits } = require('discord.js');
 const { Client: NotionClient } = require('@notionhq/client');
@@ -253,11 +252,12 @@ discord.on('messageCreate', async (message) => {
   // Ignore bots
   if (message.author.bot) return;
 
-// Manual scorecard trigger
-if (message.content.includes('scorecard')) {
-  await postDailyScorecard();
-  return;
-}
+  // Manual scorecard trigger — type !scorecard in any channel
+  if (message.content.toLowerCase().includes('scorecard')) {
+    console.log(`🎱 Scorecard triggered by ${message.author.username}`);
+    await postDailyScorecard();
+    return;
+  }
 
   // Only watch client channels
   if (!isClientChannel(message.channel)) {
