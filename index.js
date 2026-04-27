@@ -254,7 +254,7 @@ discord.on('messageCreate', async (message) => {
   if (message.author.bot) return;
 
   // Manual scorecard trigger
-  if (message.content === '!scorecard') {
+  if (message.content.trim().toLowerCase() === '!scorecard') {
     await postDailyScorecard();
     return;
   }
