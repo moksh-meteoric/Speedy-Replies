@@ -252,7 +252,6 @@ discord.on('messageCreate', async (message) => {
   // Ignore bots
   if (message.author.bot) return;
 
-  // Manual scorecard trigger — type !scorecard in any channel
   if (message.content.toLowerCase().includes('scorecard')){
     console.log(`🎱 Scorecard triggered by ${message.author.username}`);
     await postDailyScorecard();
